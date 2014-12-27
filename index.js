@@ -66,7 +66,7 @@ exports.register = function(commander) {
                                 }
                             });
                             var result = module.exports(params);
-                            if(!result.pass && result.message) {
+                            if(result && !result.pass && result.message) {
                                 logger.info('------------------------------------');
                                 console.log('\n------------------------------------');
                                 logger.info(' LOG ID : tm = ' + params._tm);
