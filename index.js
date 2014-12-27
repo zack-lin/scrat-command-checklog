@@ -67,14 +67,16 @@ exports.register = function(commander) {
                             });
                             var result = module.exports(params);
                             if(result && !result.pass && result.message) {
-                                logger.info('------------------------------------');
-                                console.log('\n------------------------------------');
-                                logger.info(' LOG ID : tm = ' + params._tm);
-                                console.log(' LOG ID : tm = %s', params._tm);
-                                logger.info(result.message.join(', '));
-                                console.log(result.message.join(', '));
-                                logger.info('------------------------------------');
-                                console.log('------------------------------------');
+                                logger.info('-----------------------------------------');
+                                console.log('\n-----------------------------------------');
+                                logger.info(' LOG ID   : tm = ' + params._tm);
+                                console.log(' LOG ID   : tm = %s', params._tm);
+                                logger.info(' 用例     : ' + item);
+                                console.log(' 用例     : %s', item);
+                                logger.info(' 检查结果 : ' + result.message.join(', '));
+                                console.log(' 检查结果 : %s', result.message.join(', '));
+                                logger.info('-----------------------------------------');
+                                console.log('-----------------------------------------');
                             } else if(result.pass){
                                 pass++;
                             }
