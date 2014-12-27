@@ -53,7 +53,9 @@ exports.register = function(commander) {
         getAllFiles(casesPath).forEach(function(item){
             requireAsync(item, function(err, module){
                 if(typeof module.exports === 'function') {
+                    var pass = 0;
                     readLines(input, function(data){
+                        
                         if(data) {
                             var params = {};
                             data = data.replace('\r', '').split('`');
@@ -73,8 +75,13 @@ exports.register = function(commander) {
                                 console.log(result.message.join(', '));
                                 logger.info('------------------------------------');
                                 console.log('------------------------------------');
+                            } else if(result.pass){
+                                pass++;
                             }
                         }
+                    }, function(total){
+                        console.log('pass : %s, fail : %s, total : %s, pass rate : %s', pass, total - pass, total, parseInt(pass / total * 100) + '%'); 
+                        logger.info('pass : ' + pass + ', fail : ' + (total - pass) + ', total : ' + total + ', pass rate : ' + (parseInt(pass / total * 100) + '%'));
                     });
                 }
             });
@@ -111,8 +118,9 @@ exports.register = function(commander) {
         return _logger;
     }
 
-    function readLines(input, func) {
+    function readLines(input, func1, func2) {
         var remaining = '';
+        var total = 0;
 
         input.on('data', function(data) {
             remaining += data;
@@ -121,7 +129,8 @@ exports.register = function(commander) {
             while (index > -1) {
                 var line = remaining.substring(last, index);
                 last = index + 1;
-                func(line);
+                total ++;
+                func1(line);
                 index = remaining.indexOf('\n', last);
             }
 
@@ -132,6 +141,7 @@ exports.register = function(commander) {
             if (remaining.length > 0) {
                 func(remaining);
             }
+            func2(total);
         });
     }
 
