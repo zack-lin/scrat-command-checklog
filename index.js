@@ -141,7 +141,7 @@ exports.register = function(commander) {
 
         input.on('end', function() {
             if (remaining.length > 0) {
-                func(remaining);
+                func1(remaining);
             }
             func2(total);
         });
