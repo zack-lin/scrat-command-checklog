@@ -10,6 +10,7 @@ var child_process = require('child_process');
 var spawn = child_process.spawn;
 var mkdirp = require('mkdirp');
 var log4js = require('log4js');
+require('events').EventEmitter.prototype._maxListeners = 100;
 
 function dir() {
     var dirPath = path.join.apply(path, arguments);
@@ -50,40 +51,41 @@ exports.register = function(commander) {
 
     function readLogsAndTest(casesPath, logsPath) {
         var input = fs.createReadStream(logsPath);
+        var pass = {};
         getAllFiles(casesPath).forEach(function(item){
             requireAsync(item, function(err, module){
                 if(typeof module.exports === 'function') {
-                    var pass = 0;
+                    pass[item] = pass[item] || 0;
                     readLines(input, function(data){
-                        
+                        // console.log(3, item);
                         if(data) {
                             var params = {};
                             data = data.replace('\r', '').split('`');
                             data.forEach(function(param){
-                                if(param) {
-                                    param = param.split('=');
-                                    params[param[0]] = param[1];
+                                if(param && param.indexOf('=')>=1) {
+                                    var key = param.substring(0, param.indexOf('='));
+                                    var val = param.replace(key + '=', '');
+                                    params[key] = val;
                                 }
                             });
                             var result = module.exports(params);
                             if(result && !result.pass && result.message) {
-                                logger.info('-----------------------------------------');
-                                console.log('\n-----------------------------------------');
                                 logger.info(' LOG ID   : tm = ' + params._tm);
                                 console.log(' LOG ID   : tm = %s', params._tm);
                                 logger.info(' 用例     : ' + item);
                                 console.log(' 用例     : %s', item);
                                 logger.info(' 检查结果 : ' + result.message.join(', '));
                                 console.log(' 检查结果 : %s', result.message.join(', '));
-                                logger.info('-----------------------------------------');
-                                console.log('-----------------------------------------');
                             } else if(result.pass){
-                                pass++;
+                                pass[item]++;
                             }
                         }
+
                     }, function(total){
-                        console.log('pass : %s, fail : %s, total : %s, pass rate : %s', pass, total - pass, total, parseInt(pass / total * 100) + '%'); 
-                        logger.info('pass : ' + pass + ', fail : ' + (total - pass) + ', total : ' + total + ', pass rate : ' + (parseInt(pass / total * 100) + '%'));
+                        console.log('pass : %s, fail : %s, total : %s, pass rate : %s', pass[item], total - pass[item], total, parseInt(pass[item] / total * 100) + '%'); 
+                        logger.info('pass : ' + pass[item] + ', fail : ' + (total - pass[item]) + ', total : ' + total + ', pass rate : ' + (parseInt(pass[item] / total * 100) + '%'));
+                        logger.info('-----------------------------------------------------------------');
+                        console.log('-----------------------------------------------------------------\n');
                     });
                 }
             });
@@ -139,8 +141,9 @@ exports.register = function(commander) {
             remaining = remaining.substring(last);
         });
 
-        input.on('end', function() {
+        input.on('end', function(data) {
             if (remaining.length > 0) {
+                total ++;
                 func1(remaining);
             }
             func2(total);
