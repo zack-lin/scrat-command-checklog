@@ -51,8 +51,8 @@ exports.register = function(commander) {
 
     function readLogsAndTest(casesPath, logsPath) {
         var input = fs.createReadStream(logsPath);
-        var pass = {}, total = {}, msg = {};
-        getAllFiles(casesPath).forEach(function(item, index){
+        var pass = {}, total = {}, msg = {}, index = 0;
+        getAllFiles(casesPath).forEach(function(item){
             requireAsync(item, function(err, module){
                 if(typeof module.exports === 'function') {
                     pass[item] = pass[item] || 0;
@@ -84,8 +84,9 @@ exports.register = function(commander) {
                         }
 
                     }, function(count){
-                        console.log('\n%s. 用例 %s', index + 1, item);
-                        logger.info('\n' + (index + 1) + '. 用例 ' + item);
+                        index++;
+                        console.log('\n%s. 用例 %s', index, item);
+                        logger.info('\n' + index + '. 用例 ' + item);
 
                         var _msg = msg[item];
                         if(_msg && _msg.length > 0) {
