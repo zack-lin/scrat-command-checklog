@@ -51,13 +51,13 @@ exports.register = function(commander) {
 
     function readLogsAndTest(casesPath, logsPath) {
         var input = fs.createReadStream(logsPath);
-        var pass = {};
-        getAllFiles(casesPath).forEach(function(item){
+        var pass = {}, total = {}, msg = {};
+        getAllFiles(casesPath).forEach(function(item, index){
             requireAsync(item, function(err, module){
                 if(typeof module.exports === 'function') {
                     pass[item] = pass[item] || 0;
+                    total[item] = total[item] || 0;
                     readLines(input, function(data){
-                        // console.log(3, item);
                         if(data) {
                             var params = {};
                             data = data.replace('\r', '').split('`');
@@ -70,22 +70,42 @@ exports.register = function(commander) {
                             });
                             var result = module.exports(params);
                             if(result && !result.pass && result.message) {
-                                logger.info(' LOG ID   : tm = ' + params._tm);
-                                console.log(' LOG ID   : tm = %s', params._tm);
-                                logger.info(' 用例     : ' + item);
-                                console.log(' 用例     : %s', item);
-                                logger.info(' 检查结果 : ' + result.message.join(', '));
-                                console.log(' 检查结果 : %s', result.message.join(', '));
-                            } else if(result.pass){
+                                msg[item] = msg[item] || [];
+                                msg[item].push({
+                                    _tm: params._tm,
+                                    result: result.message.join(', ')
+                                });
+                                
+                                total[item]++;
+                            } else if(result && result.pass){
                                 pass[item]++;
+                                total[item]++;
                             }
                         }
 
-                    }, function(total){
-                        console.log('pass : %s, fail : %s, total : %s, pass rate : %s', pass[item], total - pass[item], total, parseInt(pass[item] / total * 100) + '%'); 
-                        logger.info('pass : ' + pass[item] + ', fail : ' + (total - pass[item]) + ', total : ' + total + ', pass rate : ' + (parseInt(pass[item] / total * 100) + '%'));
-                        logger.info('-----------------------------------------------------------------');
-                        console.log('-----------------------------------------------------------------\n');
+                    }, function(count){
+                        console.log('\n%s. 用例 %s', index + 1, item);
+                        logger.info('\n' + (index + 1) + '. 用例 ' + item);
+
+                        var _msg = msg[item];
+                        if(_msg && _msg.length > 0) {
+                            _msg.forEach(function(o){
+                                logger.info(' LOG ID   : tm = ' + o._tm);
+                                console.log(' LOG ID   : tm = %s', o._tm);
+                                logger.info(' 用例     : ' + item);
+                                console.log(' 用例     : %s', item);
+                                logger.info(' 检查结果 : ' + o.result);
+                                console.log(' 检查结果 : %s', o.result);
+                            });
+                        }
+                        
+                        var passRate = pass[item] / total[item] || 0;
+                        var hitRate = total[item] / count || 0;
+                        
+                        console.log('pass : %s, fail : %s, hit : %s, total : %s, pass rate : %s, hit rate : %s', pass[item], total[item] - pass[item], total[item], count, parseInt(passRate * 100) + '%', parseInt(hitRate * 100) + '%'); 
+                        logger.info('pass : ' + pass[item] + ', fail : ' + (total[item] - pass[item]) + ', total : ' + total[item] + ', pass rate : ' + (parseInt(passRate * 100) + '%') + ', hit rate : ' + (parseInt(hitRate * 100) + '%'));
+                        logger.info('--------------------------------------------------------------------------');
+                        console.log('--------------------------------------------------------------------------');
                     });
                 }
             });
