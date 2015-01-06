@@ -8,15 +8,8 @@ var path = require('path');
 var fs = require('fs');
 var child_process = require('child_process');
 var spawn = child_process.spawn;
-var mkdirp = require('mkdirp');
-var log4js = require('log4js');
-require('events').EventEmitter.prototype._maxListeners = 100;
-
-function dir() {
-    var dirPath = path.join.apply(path, arguments);
-    mkdirp.sync(dirPath);
-    return dirPath;
-};
+var _ = require('underscore');
+var csvWriter = require('csv-write-stream');
 
 exports.name = 'checklog';
 exports.usage = '[options]';
@@ -47,100 +40,73 @@ exports.register = function(commander) {
         }
     })());
 
-    var logger = getLogger();
+    var resultPath = path.join(root, 'private/results/report-' + Date.now() + '.csv');
 
-    function readLogsAndTest(casesPath, logsPath) {
+    
+    var t;
+    function readLogsAndTest(confPathname, logsPath) {
+        t = +Date.now();
         var input = fs.createReadStream(logsPath);
-        var pass = {}, total = {}, msg = {}, index = 0;
-        getAllFiles(casesPath).forEach(function(item){
-            requireAsync(item, function(err, module){
-                if(typeof module.exports === 'function') {
-                    pass[item] = pass[item] || 0;
-                    total[item] = total[item] || 0;
-                    readLines(input, function(data){
-                        if(data) {
-                            var params = {};
-                            data = data.replace('\r', '').split('`');
-                            data.forEach(function(param){
-                                if(param && param.indexOf('=')>=1) {
-                                    var key = param.substring(0, param.indexOf('='));
-                                    var val = param.replace(key + '=', '');
-                                    params[key] = val;
-                                }
-                            });
-                            var result = module.exports(params);
-                            if(result && !result.pass && result.message) {
-                                msg[item] = msg[item] || [];
-                                msg[item].push({
-                                    _tm: params._tm,
-                                    result: result.message.join(', ')
-                                });
-                                
-                                total[item]++;
-                            } else if(result && result.pass){
-                                pass[item]++;
-                                total[item]++;
-                            }
-                        }
-
-                    }, function(count){
-                        index++;
-                        console.log('\n%s. 用例 %s', index, item);
-                        logger.info('\n' + index + '. 用例 ' + item);
-
-                        var _msg = msg[item];
-                        if(_msg && _msg.length > 0) {
-                            _msg.forEach(function(o){
-                                logger.info(' LOG ID   : tm = ' + o._tm);
-                                console.log(' LOG ID   : tm = %s', o._tm);
-                                logger.info(' 用例     : ' + item);
-                                console.log(' 用例     : %s', item);
-                                logger.info(' 检查结果 : ' + o.result);
-                                console.log(' 检查结果 : %s', o.result);
-                            });
-                        }
-                        
-                        var passRate = pass[item] / total[item] || 0;
-                        var hitRate = total[item] / count || 0;
-                        
-                        console.log('pass : %s, fail : %s, hit : %s, total : %s, pass rate : %s, hit rate : %s', pass[item], total[item] - pass[item], total[item], count, parseInt(passRate * 100) + '%', parseInt(hitRate * 100) + '%'); 
-                        logger.info('pass : ' + pass[item] + ', fail : ' + (total[item] - pass[item]) + ', total : ' + total[item] + ', pass rate : ' + (parseInt(passRate * 100) + '%') + ', hit rate : ' + (parseInt(hitRate * 100) + '%'));
-                        logger.info('--------------------------------------------------------------------------');
-                        console.log('--------------------------------------------------------------------------');
-                    });
+        var type = logsPath.indexOf('click') >= 0 ? 'click' : 'pageview';
+        
+        requireAsync(confPathname, function(err, module){
+            var filters = module.filters && module.filters[type] ? module.filters[type] : null;
+            var replaceFn = module.replaceFn && module.replaceFn[type] ? module.replaceFn[type] : null;
+            var uniqFn = module.uniqFn && module.uniqFn[type] ? module.uniqFn[type] : null;
+            if(filters) {
+                var totalData = {};
+                if (typeof filters === 'string') {
+                    filters = filters.split(' ');
                 }
-            });
-        });
-    }
 
-     function getLogger() {
-        var logDir = path.join(root, 'private/results');
-
-        dir(logDir);
-        log4js.loadAppender('dateFile');
-        log4js.clearAppenders();
-        log4js.addAppender(log4js.appenderMakers.dateFile({
-            filename: 'result',
-            pattern:  '_yyyyMMddhh.log',
-            alwaysIncludePattern: true,
-            layout: {
-                type: 'pattern',
-                pattern: '%x{data}',
-                tokens: {data: function (e) {
-                    var line;
-                    e.data.forEach(function (d) {
-                        line = d;
+                readLines(input, function(data){
+                    if(data) {
+                        var params = {};
+                        //参数分割 耗时较长
+                        data = data.replace('\r', '');
+                        data = data.split('`');
+                        data.forEach(function(param){
+                            if(param && param.indexOf('=')>=1) {
+                                var _key = param.substring(0, param.indexOf('='));
+                                if(filters.indexOf(_key)>=0) {
+                                    var val = param.replace(_key + '=', '');
+                                    params[_key] = val;
+                                }
+                            }
+                        });
+                        //替换参数值
+                        var params = replaceFn ? replaceFn(params) : params, rsl = [];
+                        //过滤参数
+                        filters.forEach(function(o){
+                            rsl.push(params[o] || '');
+                        });
+                        //获取结果字符串序列号为 key 值做 hash 排重，这里不能用 md5 ，会发生内存泄露
+                        var key = JSON.stringify(rsl);
+                        totalData[key] = params;
+                    }
+                }, function(total){
+                    var rsl = _.values(totalData);
+                    //矩阵数组排重
+                    rsl = uniqFn ? uniqFn(rsl) : rsl;
+                    
+                    var writer = csvWriter({ headers: filters});
+                    writer.pipe(fs.createWriteStream(resultPath));
+                   
+                    rsl.forEach(function(item){
+                        //按照过滤顺序输出
+                        var tmp = [];
+                        filters.forEach(function(o){
+                            tmp.push(item[o]);
+                        });
+                        writer.write(tmp);
                     });
-                    return line;
-                }}
+                    writer.end();
+                    
+                    var n = +Date.now();
+                    console.log('%s 总耗时 %sms', logsPath.substring(logsPath.lastIndexOf('\\') + 1, logsPath.length), n - t);
+                });
             }
-        }, {
-            cwd: logDir
-        }), 'results');
-        var _logger = log4js.getLogger('results');
-        _logger.setLevel('info');
-
-        return _logger;
+        });
     }
 
     function readLines(input, func1, func2) {
@@ -171,35 +137,18 @@ exports.register = function(commander) {
         });
     }
 
-    function getAllFiles(rootPath){
-
-        var res = [] , files = fs.readdirSync(rootPath);
-        files.forEach(function(file){
-            var pathname = path.join(rootPath, file)
-            , stat = fs.lstatSync(pathname);
-
-            if (!stat.isDirectory()){
-                res.push(pathname.replace(path.join(root),'.'));
-            } else {
-                res = res.concat(getAllFiles(pathname));
-            }
-        });
-        return res;
-    }
-
-    var requireAsync = function (module, callback) {
+    function requireAsync(module, callback) {
       fs.readFile(module, { encoding: 'utf8' }, function (err, data) {
         var module = {
           exports: {}
         };
         var code = '(function (module) {' + data + '})(module)';
         eval(code);
-        callback(null, module);
+        callback(null, module.exports);
       });
     };
 
     commander
-        .option('-c, --cases <path>', 'test cases')
         .option('-l, --logs <path>', 'test log  data')
         .action(function(){
             var args = Array.prototype.slice.call(arguments);
@@ -215,29 +164,20 @@ exports.register = function(commander) {
                 fis.log.error('missing document root');
             }
 
-            var casesPath, logsPath;
-            if(opt.cases){
-                casesPath = path.join(root, opt.cases);
-                if(fis.util.exists(casesPath)){
-                    delete opt.cases;
-                }else {
-                    casesPath = null;
-                    fis.log.error('invalid cases path [' + casesPath + ']');
-                }
-            } 
+            var confPathname = './checklog-conf.js';
+            var pathname = path.join(root, confPathname);
+            if(!fis.util.exists(pathname) || fis.util.isDir(pathname)){
+                fis.log.error('invalid checklog-conf path [' + confPathname + ']');
+            }
 
+            var logsPath;
             if(opt.logs){
                 logsPath = path.join(root, opt.logs);
                 if(fis.util.exists(logsPath) && !fis.util.isDir(logsPath)){
-                    delete opt.logsPath;
+                    readLogsAndTest(pathname, logsPath);
                 }else {
-                    logsPath = null;
                     fis.log.error('invalid logs path [' + logsPath + ']');
                 }
-            } 
-
-            if(casesPath && logsPath) {
-                readLogsAndTest(casesPath, logsPath);
             }
         });
 };
