@@ -40,7 +40,7 @@ exports.register = function(commander) {
         }
     })());
 
-    var resultPath = path.join(root, 'private/results/report-' + Date.now() + '.csv');
+    
 
     
     var t;
@@ -48,6 +48,7 @@ exports.register = function(commander) {
         t = +Date.now();
         var input = fs.createReadStream(logsPath);
         var type = logsPath.indexOf('click') >= 0 ? 'click' : 'pageview';
+        var resultPath = path.join(root, 'private/results/report-' + type + '-' + Date.now() + '.csv');
         
         requireAsync(confPathname, function(err, module){
             var filters = module.filters && module.filters[type] ? module.filters[type] : null;
