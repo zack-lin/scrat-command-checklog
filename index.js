@@ -171,6 +171,11 @@ exports.register = function(commander) {
                 fis.log.error('invalid checklog-conf path [' + confPathname + ']');
             }
 
+            var resultsDir = path.join(root, 'private/results');
+            if(!fis.util.exists(resultsDir) || !fis.util.isDir(resultsDir)){
+                fis.util.mkdir(resultsDir);
+            }
+
             var logsPath;
             if(opt.logs){
                 logsPath = path.join(root, opt.logs);
